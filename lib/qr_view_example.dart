@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_application_1/FormPage.dart';
 import 'package:qr_code_scanner/qr_code_scanner.dart';
 import 'package:http/http.dart' as http;
-import 'dart:convert'; // Importa esta librería para trabajar con JSON
+import 'dart:convert';
 
 class QRViewExample extends StatefulWidget {
   const QRViewExample({super.key});
@@ -32,7 +32,31 @@ class _QRViewExampleState extends State<QRViewExample> {
       body: SafeArea(
         child: Column(
           children: <Widget>[
-            // ... Tu diseño UI (es igual que antes)
+            // Rectángulo superior con imagen
+            Container(
+              width: double.infinity,
+              height: 60,
+              color: const Color(0xFF92949B),
+              alignment: Alignment.centerLeft,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Image.asset(
+                'images/GobiernoAragon.png',
+                width: 120,
+                height: 50,
+                fit: BoxFit.contain,
+              ),
+            ),
+
+            // Imagen debajo del rectángulo
+            SizedBox(
+              width: double.infinity,
+              height: 60,
+              child: Image.asset(
+                'images/OtroLogo.png',
+                fit: BoxFit.cover,
+              ),
+            ),
+
             Expanded(
               flex: 4,
               child: QRView(
@@ -51,7 +75,6 @@ class _QRViewExampleState extends State<QRViewExample> {
                       ),
               ),
             ),
-            // Barra inferior con los iconos
             Container(
               height: 60,
               color: Colors.grey.shade200,
@@ -85,38 +108,35 @@ class _QRViewExampleState extends State<QRViewExample> {
         scannedCode = scanData.code;
       });
 
-      // Intentamos hacer la solicitud a la URL obtenida del QR
       try {
         String fullUrl = scannedCode ?? '';
 
         if (!fullUrl.startsWith('http://') && !fullUrl.startsWith('https://')) {
-          fullUrl = 'https://$fullUrl'; // Añadimos https:// si no está presente
+          fullUrl = 'https://$fullUrl';
         }
 
-        // Ahora realizamos la solicitud a la URL
-        final formData = await fetchFormData(fullUrl); // Cambié el tipo de retorno de String a Map<String, String>
+        final formData = await fetchFormData(fullUrl);
 
-        // Navegamos a la página del formulario, pasándole los datos obtenidos
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => FormPage(formData: formData), // Aquí pasamos el formData
+            builder: (context) => FormPage(formData: formData),
           ),
         );
       } catch (e) {
         print('Error al obtener datos: $e');
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al cargar los datos')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al cargar los datos')),
+        );
       }
     });
   }
 
-  // Modificamos esta función para devolver Map<String, String>
   Future<Map<String, String>> fetchFormData(String url) async {
     try {
       final response = await http.get(Uri.parse(url));
 
       if (response.statusCode == 200) {
-        // Aquí asumimos que la respuesta es un JSON con los datos
         final Map<String, dynamic> jsonData = json.decode(response.body);
 
         String numeroPrecinto = jsonData['numero_precinto'] ?? '';
@@ -124,7 +144,6 @@ class _QRViewExampleState extends State<QRViewExample> {
         String estado = jsonData['estado'] ?? '';
         String fecha = jsonData['fecha'] ?? '';
 
-        // Devolvemos los datos como un Map
         return {
           'numeroPrecinto': numeroPrecinto,
           'tipo': tipo,
