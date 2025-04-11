@@ -16,6 +16,7 @@ class _QRViewExampleState extends State<QRViewExample> {
   final GlobalKey qrKey = GlobalKey(debugLabel: 'QR');
   QRViewController? controller;
   String? scannedCode;
+  bool hashNavigatedToForm = false;
 
   @override
   void reassemble() {
@@ -51,28 +52,23 @@ class _QRViewExampleState extends State<QRViewExample> {
             SizedBox(
               width: double.infinity,
               height: 60,
-              child: Image.asset(
-                'images/OtroLogo.png',
-                fit: BoxFit.cover,
-              ),
+              child: Image.asset('images/OtroLogo.png', fit: BoxFit.cover),
             ),
 
             Expanded(
               flex: 4,
-              child: QRView(
-                key: qrKey,
-                onQRViewCreated: _onQRViewCreated,
-              ),
+              child: QRView(key: qrKey, onQRViewCreated: _onQRViewCreated),
             ),
             SizedBox(
               height: 30,
               child: Center(
-                child: scannedCode != null
-                    ? Text('Código leído: $scannedCode')
-                    : const Text(
-                        'Escanea un código QR',
-                        style: TextStyle(fontSize: 12),
-                      ),
+                child:
+                    scannedCode != null
+                        ? Text('Código leído: $scannedCode')
+                        : const Text(
+                          'Escanea un código QR',
+                          style: TextStyle(fontSize: 12),
+                        ),
               ),
             ),
             Container(
@@ -102,33 +98,44 @@ class _QRViewExampleState extends State<QRViewExample> {
 
   void _onQRViewCreated(QRViewController controller) {
     this.controller = controller;
+
     controller.scannedDataStream.listen((scanData) async {
       controller.pauseCamera();
-      setState(() {
-        scannedCode = scanData.code;
-      });
 
-      try {
-        String fullUrl = scannedCode ?? '';
+      String? scanned = scanData.code;
 
-        if (!fullUrl.startsWith('http://') && !fullUrl.startsWith('https://')) {
-          fullUrl = 'https://$fullUrl';
-        }
-
-        final formData = await fetchFormData(fullUrl);
-
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => FormPage(formData: formData),
-          ),
-        );
-      } catch (e) {
-        print('Error al obtener datos: $e');
+      if (scanned == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al cargar los datos')),
+          SnackBar(content: Text('Código QR no válido')),
         );
+        controller.resumeCamera();
+        return;
       }
+
+      // Verificar si la URL escaneada es válida
+      String url = scanned.startsWith('http') ? scanned : 'https://$scanned';
+      print("URL escaneada: $url");
+
+      // Verificar si la URL comienza con "http" o "https"
+      if (!url.startsWith("http")) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('La URL escaneada no es válida')),
+        );
+        controller.resumeCamera();
+        return;
+      }
+
+      // Verifica si ya estamos en la página del formulario antes de navegar
+      if (ModalRoute.of(context)?.settings.name == "/formPage") {
+        controller.resumeCamera();
+        return; // No hacer nada si estamos ya en la página del formulario
+      }
+
+      // Navegar solo si la URL es válida
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => FormPage(url: url)),
+      );
     });
   }
 
