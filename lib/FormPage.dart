@@ -43,7 +43,6 @@ class _FormPageState extends State<FormPage> {
       final body = {'hash': 'UFJFQ0lOVE9TU0VSVklDRQ==', 'codigo': codPrec};
 
       final response = await http.post(url, headers: headers, body: body);
-      //final response = await http.get(url).timeout(Duration(seconds: 30));
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -119,7 +118,7 @@ class _FormPageState extends State<FormPage> {
       'hash': 'UFJFQ0lOVE9TU0VSVklDRQ==',
       'codigo': precinto?['codigo'],
       'fechaCaza': DateTime.now().toIso8601String(),
-      'valoresIngresados': valores,
+      'valoresIngresados': valores, // Cambiar de String a dynamic si es necesario
     };
 
     try {
@@ -151,6 +150,16 @@ class _FormPageState extends State<FormPage> {
     final String id = config['id'].toString();
     final String tipo = config['tipo'];
     final String etiqueta = config['etiqueta'];
+
+      // Verificar si el campo es de solo lectura
+  final bool isReadOnly = config['readonly'] ?? false;
+
+    // Cambiar solo el fondo de la caja de texto a gris si el campo es solo lectura
+    InputDecoration inputDecoration = InputDecoration(
+      labelText: etiqueta,
+      filled: true,
+      fillColor: isReadOnly ? Colors.grey[300] : Colors.white, // Fondo gris para solo lectura
+    );
 
     switch (tipo) {
       case 'number':
@@ -201,39 +210,93 @@ class _FormPageState extends State<FormPage> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text('Precinto ${precinto!['codigo']}')),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: ListView(
-            children: [
-              TextFormField(
-                initialValue: precinto!['codigo'],
-                decoration: InputDecoration(labelText: 'Número de Precinto'),
-                readOnly: true,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Rectángulo superior con imagen
+            Container(
+              width: double.infinity,
+              height: 60,
+              color: const Color(0xFF92949B),
+              alignment: Alignment.centerLeft,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Image.asset(
+                'images/GobiernoAragon.png',
+                width: 120,
+                height: 50,
+                fit: BoxFit.contain,
               ),
-              TextFormField(
-                initialValue: precinto!['tipo'],
-                decoration: InputDecoration(labelText: 'Tipo'),
-                readOnly: true,
+            ),
+
+            // Imagen debajo del rectángulo
+            SizedBox(
+              width: double.infinity,
+              height: 60,
+              child: Image.asset('images/OtroLogo.png', fit: BoxFit.cover),
+            ),
+
+            // Contenido del formulario
+            Expanded(
+              flex: 4,
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Form(
+                  key: _formKey,
+                  child: ListView(
+                    children: [
+                      TextFormField(
+                        initialValue: precinto!['codigo'],
+                        decoration: InputDecoration(labelText: 'Número de Precinto'),
+                        readOnly: true,
+                      ),
+                      TextFormField(
+                        initialValue: precinto!['tipo'],
+                        decoration: InputDecoration(labelText: 'Tipo'),
+                        readOnly: true,
+                      ),
+                      TextFormField(
+                        initialValue: precinto!['estado'],
+                        decoration: InputDecoration(labelText: 'Estado'),
+                        readOnly: true,
+                      ),
+                      const SizedBox(height: 20),
+                      ...precinto!['configuracion']
+                          .map<Widget>((conf) => _buildDynamicField(conf))
+                          .toList(),
+                      const SizedBox(height: 24),
+                      ElevatedButton(
+                        onPressed: enviarFormulario,
+                        child: Text('Enviar'),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              TextFormField(
-                initialValue: precinto!['estado'],
-                decoration: InputDecoration(labelText: 'Estado'),
-                readOnly: true,
+            ),
+
+            // Barra de navegación inferior
+            Container(
+              height: 60,
+              color: Colors.grey.shade200,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.home),
+                    onPressed: () {
+                      // Acción para ir a la pantalla principal
+                    },
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.description),
+                    onPressed: () {
+                      // Acción adicional si se necesita
+                    },
+                  ),
+                ],
               ),
-              const SizedBox(height: 20),
-              ...precinto!['configuracion']
-                  .map<Widget>((conf) => _buildDynamicField(conf))
-                  .toList(),
-              const SizedBox(height: 24),
-              ElevatedButton(
-                onPressed: enviarFormulario,
-                child: Text('Enviar'),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -244,6 +307,8 @@ class _FormPageState extends State<FormPage> {
     for (var controller in controllers.values) {
       controller.dispose();
     }
-    super.dispose();
+    super.dispose
+  ();
   }
 }
+
