@@ -18,12 +18,24 @@ class _FormPageState extends State<FormPage> {
   Map<String, Map<String, dynamic>> configMap = {};
   bool isLoading = true;
   final _formKey = GlobalKey<FormState>();
+  late TextEditingController fechaCazaController;
+  bool comunicarCazado = false;
+
+  bool enviadoCorrectamente = false;
+  bool campoBloqueados = false;
+
 
   @override
   void initState() {
-    super.initState();
+    super.initState(
+    );
     _loadData();
     print('📡 URL original: ${widget.url}');
+
+        fechaCazaController = TextEditingController(
+      text:
+          '${DateTime.now().day.toString().padLeft(2, '0')}/${DateTime.now().month.toString().padLeft(2, '0')}/${DateTime.now().year}',
+    );
   }
 
   Future<void> _loadData() async {
@@ -117,16 +129,23 @@ class _FormPageState extends State<FormPage> {
     final body = {
       'hash': 'UFJFQ0lOVE9TU0VSVklDRQ==',
       'codigo': precinto?['codigo'],
-      'fechaCaza': DateTime.now().toIso8601String(),
-      'valoresIngresados': valores, // Cambiar de String a dynamic si es necesario
+      'fechaCaza': _parseFechaCazaToISO(fechaCazaController.text),
+      'valoresIngresados': valores,
     };
+
 
     try {
       final response = await http.post(
         Uri.parse(postUrl),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode(body),
-      );
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: {
+          'hash': 'UFJFQ0lOVE9TU0VSVklDRQ==',
+          'codigo': precinto?['codigo'],
+          'fechaCaza': _parseFechaCazaToISO(fechaCazaController.text),
+          'valoresIngresados': json.encode(valores),
+        },
+    );
+
 
       if (response.statusCode == 200) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -137,6 +156,7 @@ class _FormPageState extends State<FormPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('❌ Error al enviar la comunicación')),
         );
+        print('❌ Error ${response.statusCode}: ${response.body}');
       }
     } catch (e) {
       print('Error de conexión: $e');
@@ -145,6 +165,20 @@ class _FormPageState extends State<FormPage> {
       ).showSnackBar(SnackBar(content: Text('❗ Error de conexión')));
     }
   }
+
+    String _parseFechaCazaToISO(String fecha) {
+    try {
+      final parts = fecha.split('/');
+      if (parts.length != 3) return '';
+      final day = int.parse(parts[0]);
+      final month = int.parse(parts[1]);
+      final year = int.parse(parts[2]);
+      return DateTime(year, month, day).toIso8601String();
+    } catch (_) {
+      return '';
+    }
+  }
+
 
   Widget _buildDynamicField(Map<String, dynamic> config) {
     final String id = config['id'].toString();
@@ -246,28 +280,52 @@ class _FormPageState extends State<FormPage> {
                     children: [
                       TextFormField(
                         initialValue: precinto!['codigo'],
-                        decoration: InputDecoration(labelText: 'Número de Precinto'),
+                        decoration: InputDecoration(labelText: 'Número de Precinto',
+                        filled: true
+                        ),
                         readOnly: true,
                       ),
                       TextFormField(
                         initialValue: precinto!['tipo'],
-                        decoration: InputDecoration(labelText: 'Tipo'),
+                        decoration: InputDecoration(labelText: 'Tipo',
+                        filled: true
+                        ),
                         readOnly: true,
                       ),
                       TextFormField(
                         initialValue: precinto!['estado'],
-                        decoration: InputDecoration(labelText: 'Estado'),
+                        decoration: InputDecoration(labelText: 'Estado',
+                        filled: true,
+                        ),
+                        readOnly: true,
+                      ),
+                      TextFormField(
+                        controller: fechaCazaController,
+                        decoration: InputDecoration(
+                          labelText: 'Fecha Caza',
+                          filled: true,
+                        ),
                         readOnly: true,
                       ),
                       const SizedBox(height: 20),
                       ...precinto!['configuracion']
                           .map<Widget>((conf) => _buildDynamicField(conf))
                           .toList(),
+                      CheckboxListTile(
+                        title: const Text('Deseo comunicar el precinto como Cazado'),
+                        value: comunicarCazado,
+                        onChanged: (bool? value) {
+                          setState(() {
+                            comunicarCazado = value ?? false;
+                          });
+                        },
+                      ),
                       const SizedBox(height: 24),
                       ElevatedButton(
                         onPressed: enviarFormulario,
-                        child: Text('Enviar'),
+                        child: Text('Comunicar'),
                       ),
+                      
                     ],
                   ),
                 ),
