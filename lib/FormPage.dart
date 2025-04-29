@@ -20,74 +20,79 @@ class _FormPageState extends State<FormPage> {
   final _formKey = GlobalKey<FormState>();
   late TextEditingController fechaCazaController;
   bool comunicarCazado = false;
-
   bool enviadoCorrectamente = false;
-  bool campoBloqueados = false;
-
+  bool camposBloqueados = false;
 
   @override
   void initState() {
-    super.initState(
-    );
+    super.initState();
     _loadData();
-    print('📡 URL original: ${widget.url}');
-
-        fechaCazaController = TextEditingController(
+    fechaCazaController = TextEditingController(
       text:
           '${DateTime.now().day.toString().padLeft(2, '0')}/${DateTime.now().month.toString().padLeft(2, '0')}/${DateTime.now().year}',
     );
   }
 
   Future<void> _loadData() async {
-    try {
-      final codPrecEncoded = Uri.parse(widget.url).queryParameters['codPrec'];
-      if (codPrecEncoded == null) {
-        throw Exception('No se encontró el parámetro codPrec en la URL');
-      }
+  try {
+    final codPrecEncoded = Uri.parse(widget.url).queryParameters['codPrec'];
+    if (codPrecEncoded == null) {
+      throw Exception('No se encontró el parámetro codPrec en la URL');
+    }
 
-      final codPrec = utf8.decode(base64.decode(codPrecEncoded));
-      print('🔓 Código decodificado: $codPrec');
+    final codPrec = utf8.decode(base64.decode(codPrecEncoded));
+    final url = Uri.parse('https://preaplicaciones.aragon.es/inaprec/ws/movilPrecinto');
+    final headers = {'Content-Type': 'application/x-www-form-urlencoded'};
+    final body = {'hash': 'UFJFQ0lOVE9TU0VSVklDRQ==', 'codigo': codPrec};
 
-      final url = Uri.parse(
-        'https://preaplicaciones.aragon.es/inaprec/ws/movilPrecinto',
-      );
-      final headers = {'Content-Type': 'application/x-www-form-urlencoded'};
-      final body = {'hash': 'UFJFQ0lOVE9TU0VSVklDRQ==', 'codigo': codPrec};
+    final response = await http.post(url, headers: headers, body: body);
 
-      final response = await http.post(url, headers: headers, body: body);
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      final precintoMovil = data['precintoMovil'];
 
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final precintoMovil = data['precintoMovil'];
+      if (precintoMovil != null) {
+        // Depuración: Imprimir el estado del precinto
+        print('Estado del precinto: ${precintoMovil['estado']}');
 
-        if (precintoMovil != null) {
-          final valores = Map<String, dynamic>.from(
-            precintoMovil['valoresIngresados'] ?? {},
+        // Verificar si el precinto ya está comunicado
+        if (precintoMovil['estado']?.toString().trim().toUpperCase() == 'COMUNICADO') {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('⚠️ Este precinto ya ha sido usado y no puede ser comunicado.')),
           );
           setState(() {
             precinto = precintoMovil;
-            for (var conf in precintoMovil['configuracion']) {
-              final id = conf['id'].toString();
-              final value = valores[id] ?? '';
-              formValues[id] = value;
-              controllers[id] = TextEditingController(text: value);
-              configMap[id] = conf;
-            }
+            camposBloqueados = true;
             isLoading = false;
           });
-        } else {
-          throw Exception('Precinto no encontrado en la respuesta');
+          return;
         }
+
+        final valores = Map<String, dynamic>.from(precintoMovil['valoresIngresados'] ?? {});
+        setState(() {
+          precinto = precintoMovil;
+          for (var conf in precintoMovil['configuracion']) {
+            final id = conf['id'].toString();
+            final value = valores[id] ?? '';
+            formValues[id] = value;
+            controllers[id] = TextEditingController(text: value);
+            configMap[id] = conf;
+          }
+          isLoading = false;
+        });
       } else {
-        throw Exception('Error ${response.statusCode}: ${response.body}');
+        throw Exception('Precinto no encontrado en la respuesta');
       }
-    } catch (e) {
-      print('❌ Error: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('❗ No se pudo cargar el formulario')),
-      );
+    } else {
+      throw Exception('Error ${response.statusCode}: ${response.body}');
     }
+  } catch (e) {
+    print('❌ Error: $e');
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('❗ No se pudo cargar el formulario')),
+    );
   }
+}
 
   String? _validateField(String id, String? value) {
     final config = configMap[id];
@@ -113,6 +118,13 @@ class _FormPageState extends State<FormPage> {
   }
 
   Future<void> enviarFormulario() async {
+    if (precinto?['estado']?.toString().toUpperCase() == 'COMUNICADO') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('⚠️ Este precinto ya ha sido usado y no puede ser comunicado.')),
+      );
+      return;
+    }
+
     if (!_formKey.currentState!.validate()) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('⚠️ Corrige los errores antes de enviar')),
@@ -120,53 +132,42 @@ class _FormPageState extends State<FormPage> {
       return;
     }
 
-    const String postUrl =
-        'https://preaplicaciones.aragon.es/inaprec/ws/movilPrecinto';
-    final Map<String, String> valores = {
-      for (var id in formValues.keys) id: controllers[id]?.text ?? '',
-    };
-
-    final body = {
-      'hash': 'UFJFQ0lOVE9TU0VSVklDRQ==',
-      'codigo': precinto?['codigo'],
-      'fechaCaza': _parseFechaCazaToISO(fechaCazaController.text),
-      'valoresIngresados': valores,
-    };
-
-
     try {
       final response = await http.post(
-        Uri.parse(postUrl),
+        Uri.parse('https://preaplicaciones.aragon.es/inaprec/ws/movilPrecinto'),
         headers: {'Content-Type': 'application/x-www-form-urlencoded'},
         body: {
           'hash': 'UFJFQ0lOVE9TU0VSVklDRQ==',
           'codigo': precinto?['codigo'],
           'fechaCaza': _parseFechaCazaToISO(fechaCazaController.text),
-          'valoresIngresados': json.encode(valores),
+          'valoresIngresados': json.encode({
+            for (var id in formValues.keys) id: controllers[id]?.text ?? '',
+          }),
+          'comunicarCazado': comunicarCazado ? 'true' : 'false',
         },
-    );
-
+      );
 
       if (response.statusCode == 200) {
+        setState(() {
+          enviadoCorrectamente = true;
+          camposBloqueados = true;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('✅ Comunicación enviada correctamente')),
         );
       } else {
-        print('Error: ${response.body}');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('❌ Error al enviar la comunicación')),
         );
-        print('❌ Error ${response.statusCode}: ${response.body}');
       }
     } catch (e) {
-      print('Error de conexión: $e');
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('❗ Error de conexión')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('❗ Error de conexión')),
+      );
     }
   }
 
-    String _parseFechaCazaToISO(String fecha) {
+  String _parseFechaCazaToISO(String fecha) {
     try {
       final parts = fecha.split('/');
       if (parts.length != 3) return '';
@@ -179,42 +180,28 @@ class _FormPageState extends State<FormPage> {
     }
   }
 
-
   Widget _buildDynamicField(Map<String, dynamic> config) {
     final String id = config['id'].toString();
     final String tipo = config['tipo'];
     final String etiqueta = config['etiqueta'];
-
-      // Verificar si el campo es de solo lectura
-  final bool isReadOnly = config['readonly'] ?? false;
-
-    // Cambiar solo el fondo de la caja de texto a gris si el campo es solo lectura
-    InputDecoration inputDecoration = InputDecoration(
-      labelText: etiqueta,
-      filled: true,
-      fillColor: isReadOnly ? Colors.grey[300] : Colors.white, // Fondo gris para solo lectura
-    );
+    final bool isReadOnly = config['readonly'] ?? false;
 
     switch (tipo) {
       case 'number':
         return TextFormField(
           controller: controllers[id],
-          decoration: InputDecoration(labelText: etiqueta),
+          decoration: InputDecoration(labelText: etiqueta, filled: true, fillColor: isReadOnly ? Colors.grey[300] : Colors.white),
           keyboardType: TextInputType.number,
           validator: (value) => _validateField(id, value),
+          readOnly: isReadOnly || camposBloqueados,
         );
       case 'select':
-        final List<String> opciones = List<String>.from(
-          config['valoresComoLista'] ?? [],
-        );
+        final List<String> opciones = List<String>.from(config['valoresComoLista'] ?? []);
         return DropdownButtonFormField<String>(
           value: formValues[id] != '' ? formValues[id] : null,
           decoration: InputDecoration(labelText: etiqueta),
-          items:
-              opciones
-                  .map((o) => DropdownMenuItem(value: o, child: Text(o)))
-                  .toList(),
-          onChanged: (val) {
+          items: opciones.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(),
+          onChanged: (isReadOnly || camposBloqueados ) ? null : (val) {
             setState(() {
               formValues[id] = val!;
               controllers[id]?.text = val;
@@ -223,14 +210,14 @@ class _FormPageState extends State<FormPage> {
           validator: (value) => _validateField(id, value),
         );
       case 'text':
+      default:
         return TextFormField(
           controller: controllers[id],
-          decoration: InputDecoration(labelText: etiqueta),
+          decoration: InputDecoration(labelText: etiqueta, filled: true, fillColor: isReadOnly ? Colors.grey[300] : Colors.white),
           maxLines: 3,
           validator: (value) => _validateField(id, value),
+          readOnly: isReadOnly || camposBloqueados,
         );
-      default:
-        return SizedBox.shrink();
     }
   }
 
@@ -247,29 +234,37 @@ class _FormPageState extends State<FormPage> {
       body: SafeArea(
         child: Column(
           children: [
-            // Rectángulo superior con imagen
             Container(
               width: double.infinity,
               height: 60,
               color: const Color(0xFF92949B),
               alignment: Alignment.centerLeft,
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Image.asset(
-                'images/GobiernoAragon.png',
-                width: 120,
-                height: 50,
-                fit: BoxFit.contain,
-              ),
+              child: Image.asset('images/GobiernoAragon.png', width: 120, height: 50, fit: BoxFit.contain),
             ),
-
-            // Imagen debajo del rectángulo
             SizedBox(
               width: double.infinity,
               height: 60,
               child: Image.asset('images/OtroLogo.png', fit: BoxFit.cover),
             ),
 
-            // Contenido del formulario
+            if (enviadoCorrectamente)
+              Container(
+                width: double.infinity,
+                color: Colors.lightBlue.shade100,
+                padding: const EdgeInsets.all(12),
+                margin: const EdgeInsets.all(8),
+                child: Row(
+                  children: const [
+                    Icon(Icons.info, color: Colors.blue),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text('Se ha comunicado el precinto satisfactoriamente.', style: TextStyle(color: Colors.blue)),
+                    ),
+                  ],
+                ),
+              ),
+
             Expanded(
               flex: 4,
               child: Padding(
@@ -280,59 +275,52 @@ class _FormPageState extends State<FormPage> {
                     children: [
                       TextFormField(
                         initialValue: precinto!['codigo'],
-                        decoration: InputDecoration(labelText: 'Número de Precinto',
-                        filled: true
-                        ),
+                        decoration: InputDecoration(labelText: 'Número de Precinto', filled: true),
                         readOnly: true,
                       ),
                       TextFormField(
                         initialValue: precinto!['tipo'],
-                        decoration: InputDecoration(labelText: 'Tipo',
-                        filled: true
-                        ),
+                        decoration: InputDecoration(labelText: 'Tipo', filled: true),
                         readOnly: true,
                       ),
                       TextFormField(
                         initialValue: precinto!['estado'],
-                        decoration: InputDecoration(labelText: 'Estado',
-                        filled: true,
-                        ),
+                        decoration: InputDecoration(labelText: 'Estado', filled: true),
                         readOnly: true,
                       ),
                       TextFormField(
                         controller: fechaCazaController,
-                        decoration: InputDecoration(
-                          labelText: 'Fecha Caza',
-                          filled: true,
-                        ),
+                        decoration: InputDecoration(labelText: 'Fecha Caza', filled: true),
                         readOnly: true,
                       ),
                       const SizedBox(height: 20),
-                      ...precinto!['configuracion']
-                          .map<Widget>((conf) => _buildDynamicField(conf))
-                          .toList(),
-                      CheckboxListTile(
-                        title: const Text('Deseo comunicar el precinto como Cazado'),
-                        value: comunicarCazado,
-                        onChanged: (bool? value) {
-                          setState(() {
-                            comunicarCazado = value ?? false;
-                          });
-                        },
-                      ),
+                      ...precinto!['configuracion'].map<Widget>((conf) => _buildDynamicField(conf)).toList(),
+                      if (!camposBloqueados)
+                        CheckboxListTile(
+                          title: const Text('Deseo comunicar el precinto como Cazado'),
+                          value: comunicarCazado,
+                          onChanged: (bool? value) {
+                            setState(() {
+                              comunicarCazado = value ?? false;
+                            });
+                          },
+                        ),
                       const SizedBox(height: 24),
-                      ElevatedButton(
-                        onPressed: enviarFormulario,
-                        child: Text('Comunicar'),
+                  if (!camposBloqueados)
+                    ElevatedButton(
+                      onPressed: comunicarCazado ? enviarFormulario : null,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: comunicarCazado ? null : Colors.grey,
                       ),
-                      
+                      child: const Text('Comunicar'),
+                    ),
+
                     ],
                   ),
                 ),
               ),
             ),
 
-            // Barra de navegación inferior
             Container(
               height: 60,
               color: Colors.grey.shade200,
@@ -341,15 +329,11 @@ class _FormPageState extends State<FormPage> {
                 children: [
                   IconButton(
                     icon: const Icon(Icons.home),
-                    onPressed: () {
-                      // Acción para ir a la pantalla principal
-                    },
+                    onPressed: () {},
                   ),
                   IconButton(
                     icon: const Icon(Icons.description),
-                    onPressed: () {
-                      // Acción adicional si se necesita
-                    },
+                    onPressed: () {},
                   ),
                 ],
               ),
@@ -365,8 +349,6 @@ class _FormPageState extends State<FormPage> {
     for (var controller in controllers.values) {
       controller.dispose();
     }
-    super.dispose
-  ();
+    super.dispose();
   }
 }
-
