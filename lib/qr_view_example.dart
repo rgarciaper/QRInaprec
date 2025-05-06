@@ -2,8 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/FormPage.dart';
 import 'package:qr_code_scanner/qr_code_scanner.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 
 class QRViewExample extends StatefulWidget {
   const QRViewExample({super.key});
@@ -30,6 +28,7 @@ class _QRViewExampleState extends State<QRViewExample> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.white,
       body: SafeArea(
         child: Column(
           children: <Widget>[
@@ -59,7 +58,7 @@ class _QRViewExampleState extends State<QRViewExample> {
               flex: 4,
               child: QRView(key: qrKey, onQRViewCreated: _onQRViewCreated),
             ),
-            SizedBox(
+            /*SizedBox(
               height: 30,
               child: Center(
                 child: scannedCode != null
@@ -69,7 +68,7 @@ class _QRViewExampleState extends State<QRViewExample> {
                         style: TextStyle(fontSize: 12),
                       ),
               ),
-            ),
+            ),*/
             Container(
               height: 60,
               color: Colors.grey.shade200,

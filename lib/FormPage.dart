@@ -1,11 +1,12 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/qr_view_example.dart';
 import 'package:http/http.dart' as http;
 
-class FormPage extends StatefulWidget {
+class FormPage extends StatefulWidget { // Form
   final String url;
 
-  const FormPage({required this.url});
+  const FormPage({super.key, required this.url});
 
   @override
   State<FormPage> createState() => _FormPageState();
@@ -33,7 +34,7 @@ class _FormPageState extends State<FormPage> {
     );
   }
 
-  Future<void> _loadData() async {
+Future<void> _loadData() async {
   try {
     final codPrecEncoded = Uri.parse(widget.url).queryParameters['codPrec'];
     if (codPrecEncoded == null) {
@@ -48,24 +49,21 @@ class _FormPageState extends State<FormPage> {
     final response = await http.post(url, headers: headers, body: body);
 
     if (response.statusCode == 200) {
-      final data = json.decode(response.body);
+      final data = json.decode(utf8.decode(response.bodyBytes));
       final precintoMovil = data['precintoMovil'];
 
       if (precintoMovil != null) {
         // Depuración: Imprimir el estado del precinto
         print('Estado del precinto: ${precintoMovil['estado']}');
 
-        // Verificar si el precinto ya está comunicado
-        if (precintoMovil['estado']?.toString().trim().toUpperCase() == 'COMUNICADO') {
+        // Si el estado es 'CAZADO', cargar los datos pero bloquear los campos
+        if (precintoMovil['estado']?.toString().trim().toUpperCase() == 'CAZADO') {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('⚠️ Este precinto ya ha sido usado y no puede ser comunicado.')),
+            SnackBar(content: Text('⚠️ Este precinto ya ha sido comunicado(cazado). Los datos son solo de lectura.')),
           );
           setState(() {
-            precinto = precintoMovil;
-            camposBloqueados = true;
-            isLoading = false;
+            camposBloqueados = true; // Bloquear los campos
           });
-          return;
         }
 
         final valores = Map<String, dynamic>.from(precintoMovil['valoresIngresados'] ?? {});
@@ -94,7 +92,8 @@ class _FormPageState extends State<FormPage> {
   }
 }
 
-  String? _validateField(String id, String? value) {
+
+  String? _validateField(String id, String? value) { // Validación de campos
     final config = configMap[id];
     final atributos = config?['atributosHTML'] ?? '';
     final reglas = atributos.split('/');
@@ -117,8 +116,16 @@ class _FormPageState extends State<FormPage> {
     return null;
   }
 
+
+  bool _debeCodificarseEnBase64(String id) {
+  // Personaliza esta lógica con los IDs reales que necesitan codificación
+  const camposACodificar = ['observaciones', 'comentarios', 'descripcion']; // Ejemplo
+  return camposACodificar.contains(id.toLowerCase());
+}
+
+
   Future<void> enviarFormulario() async {
-    if (precinto?['estado']?.toString().toUpperCase() == 'COMUNICADO') {
+    if (precinto?['estado']?.toString().toUpperCase() == 'CAZADO') {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('⚠️ Este precinto ya ha sido usado y no puede ser comunicado.')),
       );
@@ -134,40 +141,50 @@ class _FormPageState extends State<FormPage> {
 
     try {
       final response = await http.post(
-        Uri.parse('https://preaplicaciones.aragon.es/inaprec/ws/movilPrecinto'),
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: {
+        Uri.parse('https://preaplicaciones.aragon.es/inaprec/ws/comunicacionPrecinto'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({
           'hash': 'UFJFQ0lOVE9TU0VSVklDRQ==',
           'codigo': precinto?['codigo'],
           'fechaCaza': _parseFechaCazaToISO(fechaCazaController.text),
-          'valoresIngresados': json.encode({
-            for (var id in formValues.keys) id: controllers[id]?.text ?? '',
-          }),
-          'comunicarCazado': comunicarCazado ? 'true' : 'false',
-        },
+          'valoresIngresados': {
+            for (var id in formValues.keys)
+              id: _debeCodificarseEnBase64(id)
+                  ? base64.encode(utf8.encode(controllers[id]?.text ?? ''))
+                  : (controllers[id]?.text ?? ''),
+          },
+          'comunicarCazado': comunicarCazado,
+        }),
       );
 
+
       if (response.statusCode == 200) {
-        setState(() {
-          enviadoCorrectamente = true;
-          camposBloqueados = true;
+        setState(() { // Actualiza el estado de la UI después de enviar el formulario
+          enviadoCorrectamente = true; // Cambia el estado a enviado correctamente
+          camposBloqueados = true; // Bloquea los campos después de enviar
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('✅ Comunicación enviada correctamente')),
         );
       } else {
+        print('❌ Código: ${response.statusCode}');
+        print('❌ Body: ${response.body}');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('❌ Error al enviar la comunicación')),
         );
       }
-    } catch (e) {
+    }
+    catch (e) {
+      print('❌ Error: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('❗ Error de conexión')),
+        SnackBar(content: Text('❗ Error al enviar la comunicación')),
       );
     }
   }
 
-  String _parseFechaCazaToISO(String fecha) {
+  String _parseFechaCazaToISO(String fecha) { // Convierte la fecha de formato dd/MM/yyyy a ISO 8601
     try {
       final parts = fecha.split('/');
       if (parts.length != 3) return '';
@@ -185,6 +202,8 @@ class _FormPageState extends State<FormPage> {
     final String tipo = config['tipo'];
     final String etiqueta = config['etiqueta'];
     final bool isReadOnly = config['readonly'] ?? false;
+
+    
 
     switch (tipo) {
       case 'number':
@@ -275,24 +294,48 @@ class _FormPageState extends State<FormPage> {
                     children: [
                       TextFormField(
                         initialValue: precinto!['codigo'],
-                        decoration: InputDecoration(labelText: 'Número de Precinto', filled: true),
+                        decoration: InputDecoration(
+                          labelText: 'Número de Precinto',
+                          labelStyle: TextStyle(fontWeight: FontWeight.bold), // <---
+                          filled: true,
+                        ),
                         readOnly: true,
                       ),
                       TextFormField(
                         initialValue: precinto!['tipo'],
-                        decoration: InputDecoration(labelText: 'Tipo', filled: true),
+                        decoration: InputDecoration(
+                          labelText: 'Tipo',
+                          labelStyle: TextStyle(fontWeight: FontWeight.bold), // <---
+                          filled: true,
+                        ),
                         readOnly: true,
                       ),
                       TextFormField(
                         initialValue: precinto!['estado'],
-                        decoration: InputDecoration(labelText: 'Estado', filled: true),
+                        decoration: InputDecoration(
+                          labelText: 'Estado',
+                          labelStyle: TextStyle(fontWeight: FontWeight.bold),
+                          filled: true,
+                        ),
                         readOnly: true,
+                        style: TextStyle(
+                          color: precinto!['estado'].toString().toUpperCase() == 'CAZADO'
+                              ? Colors.blue
+                              : Colors.green,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
+
                       TextFormField(
                         controller: fechaCazaController,
-                        decoration: InputDecoration(labelText: 'Fecha Caza', filled: true),
+                        decoration: InputDecoration(
+                          labelText: 'Fecha Caza',
+                          labelStyle: TextStyle(fontWeight: FontWeight.bold), // <---
+                          filled: true,
+                        ),
                         readOnly: true,
                       ),
+
                       const SizedBox(height: 20),
                       ...precinto!['configuracion'].map<Widget>((conf) => _buildDynamicField(conf)).toList(),
                       if (!camposBloqueados)
@@ -329,7 +372,12 @@ class _FormPageState extends State<FormPage> {
                 children: [
                   IconButton(
                     icon: const Icon(Icons.home),
-                    onPressed: () {},
+                    onPressed: () {
+                      Navigator.of(context).pushReplacement(
+                        MaterialPageRoute(builder: (context) => QRViewExample(), // Cambia a la pantalla principal
+                        ),
+                      );
+                    }
                   ),
                   IconButton(
                     icon: const Icon(Icons.description),
